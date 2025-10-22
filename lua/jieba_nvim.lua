@@ -462,6 +462,12 @@ end
 
 vim.api.nvim_create_autocmd({ "InsertLeave", "TextChanged", "TextChangedI", "BufEnter" }, { callback = update_lines })
 
+local function before_zwj(row, col, buffer)
+	local s = ut.sub(buffer[row], col + 1, col + 1) -- +1 for 1-based indexing
+	local ok = pcall(utf8.codepoint, s)
+	return not ok
+end
+
 M.wordmotion_b = function()
 	local cursor_pos = vim.api.nvim_win_get_cursor(0)
 	local pos = navigate(index_prev_start_of_word, index_last_start_of_word, true, Lines, cursor_pos)
@@ -478,6 +484,9 @@ M.wordmotion_w = function()
 	local cursor_pos = vim.api.nvim_win_get_cursor(0)
 	local pos = navigate(index_next_start_of_word, index_first_start_of_word, false, Lines, cursor_pos)
 	vim.api.nvim_win_set_cursor(0, pos)
+	if before_zwj(pos[1], pos[2], Lines) then
+		M.wordmotion_w()
+	end
 	return pos
 end
 
