@@ -477,8 +477,13 @@ end
 M.wordmotion_w = function()
 	local cursor_pos = vim.api.nvim_win_get_cursor(0)
 	local pos = navigate(index_next_start_of_word, index_first_start_of_word, false, Lines, cursor_pos)
-	vim.api.nvim_win_set_cursor(0, pos)
-	return pos
+	-- if the next word is a ZWJ, skip it
+	local s = Lines[pos[1]]:sub(pos[2] + 1, pos[2] + 3)
+	if s == "\u{200D}" then
+		vim.cmd("normal! w")
+	else
+		vim.api.nvim_win_set_cursor(0, pos)
+	end
 end
 
 M.wordmotion_W = function()
