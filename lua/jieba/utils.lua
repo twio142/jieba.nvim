@@ -132,4 +132,88 @@ function M.split_similar_char(s)
    return t -- 返回含有所有字符串的table
 end
 
+function M.jieba_motion_necessary(key)
+	-- Checks for characters that require jieba motion.
+   -- Currently only supports 'w', 'e', 'b', 'ge'
+	local function is_jieba_char(c)
+		return M.is_chinese_char(c) or M.is_punctuation(c)
+	end
+
+	local _, row, col = unpack(vim.fn.getcharpos("."))
+	if key == "w" or key == "e" then
+		local lines = vim.api.nvim_buf_get_lines(0, row - 1, -1, false)
+		if #lines == 0 then
+			return false
+		end
+		local after = vim.fn.strcharpart(lines[1], col)
+		local next_word
+		if key == "w" then
+			next_word = after:match("^(%S+)")
+		end
+		if next_word then
+			for ch in string.gmatch(next_word, "[%z\1-\127\194-\244][\128-\191]*") do
+				if is_jieba_char(ch) then
+					return true
+				end
+			end
+		end
+		if #lines > 1 then
+			after = after .. "\n" .. table.concat(vim.list_slice(lines, 2), "\n")
+		end
+		local i = 0
+		if next_word then
+			i = vim.fn.strcharlen(next_word)
+		end
+		while true do
+			local ch = vim.fn.strcharpart(after, i, 1)
+			if ch == "" then
+				break
+			end
+			if ch:match("[%w]") then
+				return false
+			elseif is_jieba_char(ch) then
+				return true
+			end
+			i = i + 1
+		end
+	elseif key == "b" or key == "ge" then
+		local lines = vim.api.nvim_buf_get_lines(0, 0, row, false)
+		if #lines == 0 then
+			return false
+		end
+		local before = vim.fn.strcharpart(lines[#lines], 0, col - 1)
+		local prev_word
+		if key == "ge" then
+			prev_word = before:match("(%S+)$")
+		end
+		if prev_word then
+			for ch in string.gmatch(prev_word, "[%z\1-\127\194-\244][\128-\191]*") do
+				if is_jieba_char(ch) then
+					return true
+				end
+			end
+		end
+		if #lines > 1 then
+			before = table.concat(vim.list_slice(lines, 1, #lines - 1), "\n") .. "\n" .. before
+		end
+		local i = vim.fn.strcharlen(before) - 1
+		if prev_word then
+			i = i - vim.fn.strcharlen(prev_word)
+		end
+		while i > 0 do
+			i = i - 1
+			local ch = vim.fn.strcharpart(before, i, 1)
+			if ch == "" then
+				break
+			end
+			if ch:match("[%w]") then
+				return false
+			elseif is_jieba_char(ch) then
+				return true
+			end
+		end
+	end
+	return false
+end
+
 return M
