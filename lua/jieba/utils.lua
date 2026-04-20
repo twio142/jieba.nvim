@@ -13,130 +13,154 @@ local full_punc = lpeg.C(lpeg.utfR(0x3000, 0x303F) + lpeg.utfR(0xFF01, 0xFF5E) +
 local p_str = lpeg.Ct((hans + engs + half_punc + full_punc + nums + spaces) ^ 0)
 
 function M.split_string(str)
-   return p_str:match(str)
+	return p_str:match(str)
 end
 
 function M.split_char(str)
-   local res = {}
-   local p = "[%z\1-\127\194-\244][\128-\191]*"
+	local res = {}
+	local p = "[%z\1-\127\194-\244][\128-\191]*"
 
-   for ch in string.gmatch(str, p) do
-      table.insert(res, ch)
-   end
-   return res
+	for ch in string.gmatch(str, p) do
+		table.insert(res, ch)
+	end
+	return res
 end
 
 local chsize = function(char)
-   if not char then
-      return 0
-   elseif char >= 240 then -- F0-F7 (4-byte)
-      return 4
-   elseif char >= 224 then -- E0-EF (3-byte)
-      return 3
-   elseif char >= 192 then -- C0-DF (2-byte)
-      return 2
-   else
-      return 1
-   end
+	if not char then
+		return 0
+	elseif char >= 240 then -- F0-F7 (4-byte)
+		return 4
+	elseif char >= 224 then -- E0-EF (3-byte)
+		return 3
+	elseif char >= 192 then -- C0-DF (2-byte)
+		return 2
+	else
+		return 1
+	end
 end
 
 M.sub = function(str, startChar, endChar)
-   local startIndex = 1
-   local numChars = endChar - startChar + 1
-   while startChar > 1 do
-      local char = string.byte(str, startIndex)
-      startIndex = startIndex + chsize(char)
-      startChar = startChar - 1
-   end
+	local startIndex = 1
+	local numChars = endChar - startChar + 1
+	while startChar > 1 do
+		local char = string.byte(str, startIndex)
+		startIndex = startIndex + chsize(char)
+		startChar = startChar - 1
+	end
 
-   local currentIndex = startIndex
+	local currentIndex = startIndex
 
-   while numChars > 0 and currentIndex <= #str do
-      local char = string.byte(str, currentIndex)
-      currentIndex = currentIndex + chsize(char)
-      numChars = numChars - 1
-   end
-   return str:sub(startIndex, currentIndex - 1), numChars
+	while numChars > 0 and currentIndex <= #str do
+		local char = string.byte(str, currentIndex)
+		currentIndex = currentIndex + chsize(char)
+		numChars = numChars - 1
+	end
+	return str:sub(startIndex, currentIndex - 1), numChars
 end
 
 M.is_eng = function(char)
-   if string.find(char, "[a-zA-Z0-9]") then
-      return true
-   else
-      return false
-   end
+	if string.find(char, "[a-zA-Z0-9]") then
+		return true
+	else
+		return false
+	end
 end
 
 local compare = function(a, b)
-   if a[1] < b[1] then
-      return true
-   elseif a[1] > b[1] then
-      return false
-   end
+	if a[1] < b[1] then
+		return true
+	elseif a[1] > b[1] then
+		return false
+	end
 end
 
 M.max_of_array = function(t)
-   table.sort(t, compare)
-   return t[#t]
+	table.sort(t, compare)
+	return t[#t]
 end
 
 -- 不一定全
 function M.is_punctuation(c)
-   local code = utf8.codepoint(c)
-   -- 全角标点符号的 Unicode 范围为：0x3000-0x303F, 0xFF00-0xFFFF
-   return (code >= 0x3000 and code <= 0x303F) or (code >= 0xFF00 and code <= 0xFFFF)
+	local code = utf8.codepoint(c)
+	-- 全角标点符号的 Unicode 范围为：0x3000-0x303F, 0xFF00-0xFFFF
+	return (code >= 0x3000 and code <= 0x303F) or (code >= 0xFF00 and code <= 0xFFFF)
 end
 
 function M.is_chinese_char(c)
-   local code = utf8.codepoint(c)
-   return (code >= 0x4E00 and code <= 0x9FA5)
+	local code = utf8.codepoint(c)
+	return (code >= 0x4E00 and code <= 0x9FA5)
 end
 
 function M.is_chinese(sentence)
-   local tmp = true
-   for i in string.gmatch(sentence, "[%z\1-\127\194-\244][\128-\191]*") do
-      if not M.is_chinese_char(i) then
-         tmp = tmp and false
-      else
-         tmp = tmp and true
-      end
-   end
-   return tmp
+	local tmp = true
+	for i in string.gmatch(sentence, "[%z\1-\127\194-\244][\128-\191]*") do
+		if not M.is_chinese_char(i) then
+			tmp = tmp and false
+		else
+			tmp = tmp and true
+		end
+	end
+	return tmp
 end
 
 function M.split_similar_char(s)
-   local t = {} -- 创建一个table用来储存分割后的字符
-   local currentString = ""
-   local previousIsChinese = nil
+	local t = {} -- 创建一个table用来储存分割后的字符
+	local currentString = ""
+	local previousIsChinese = nil
 
-   for i = 1, utf8.len(s) do -- 迭代整个字符串
-      -- local c = utf8.sub(s, i, i) -- 求出第i个字符
-      local c = M.sub(s, i, i) -- 求出第i个字符
-      local isChinese = M.is_chinese_char(c) --  判断是否是中文字符
-      if previousIsChinese == nil or isChinese == previousIsChinese then
-         currentString = currentString .. c
-      else
-         -- 添加先前的字符串
-         if currentString ~= "" then
-            table.insert(t, currentString)
-            currentString = ""
-         end
-         currentString = c
-      end
-      previousIsChinese = isChinese
-   end
-   -- 添加最后的字符串（如存在）
-   if currentString ~= "" then
-      table.insert(t, currentString)
-   end
-   return t -- 返回含有所有字符串的table
+	for i = 1, utf8.len(s) do -- 迭代整个字符串
+		-- local c = utf8.sub(s, i, i) -- 求出第i个字符
+		local c = M.sub(s, i, i) -- 求出第i个字符
+		local isChinese = M.is_chinese_char(c) --  判断是否是中文字符
+		if previousIsChinese == nil or isChinese == previousIsChinese then
+			currentString = currentString .. c
+		else
+			-- 添加先前的字符串
+			if currentString ~= "" then
+				table.insert(t, currentString)
+				currentString = ""
+			end
+			currentString = c
+		end
+		previousIsChinese = isChinese
+	end
+	-- 添加最后的字符串（如存在）
+	if currentString ~= "" then
+		table.insert(t, currentString)
+	end
+	return t -- 返回含有所有字符串的table
 end
 
 function M.jieba_motion_necessary(key)
 	-- Checks for characters that require jieba motion.
-   -- Currently only supports 'w', 'e', 'b', 'ge'
+	-- Currently only supports 'w', 'e', 'b', 'ge'
+	local p = "[%z\1-\127\194-\244][\128-\191]*"
 	local function is_jieba_char(c)
 		return M.is_chinese_char(c) or M.is_punctuation(c)
+	end
+	-- Scan forward through a string; return true if a jieba char is hit before an ascii word char.
+	local function scan_forward(s)
+		for ch in string.gmatch(s, p) do
+			if ch:match("[%w]") then
+				return false
+			elseif is_jieba_char(ch) then
+				return true
+			end
+		end
+		return nil -- exhausted, keep scanning
+	end
+	-- Scan backward through a char array (table of codepoints from split_char); same semantics.
+	local function scan_backward_chars(chars, from)
+		for i = from, 1, -1 do
+			local ch = chars[i]
+			if ch:match("[%w]") then
+				return false
+			elseif is_jieba_char(ch) then
+				return true
+			end
+		end
+		return nil
 	end
 
 	local _, row, col = unpack(vim.fn.getcharpos("."))
@@ -146,35 +170,27 @@ function M.jieba_motion_necessary(key)
 			return false
 		end
 		local after = vim.fn.strcharpart(lines[1], col)
-		local next_word
-		if key == "w" then
-			next_word = after:match("^(%S+)")
-		end
+		-- Fast path: check the next non-space word on the current line
+		local next_word = after:match("^(%S+)")
 		if next_word then
-			for ch in string.gmatch(next_word, "[%z\1-\127\194-\244][\128-\191]*") do
+			for ch in string.gmatch(next_word, p) do
 				if is_jieba_char(ch) then
 					return true
 				end
 			end
 		end
-		if #lines > 1 then
-			after = after .. "\n" .. table.concat(vim.list_slice(lines, 2), "\n")
+		-- Scan remaining chars after next_word on current line
+		local rest = next_word and after:sub(#next_word + 1) or after
+		local result = scan_forward(rest)
+		if result ~= nil then
+			return result
 		end
-		local i = 0
-		if next_word then
-			i = vim.fn.strcharlen(next_word)
-		end
-		while true do
-			local ch = vim.fn.strcharpart(after, i, 1)
-			if ch == "" then
-				break
+		-- Continue scanning subsequent lines lazily
+		for li = 2, #lines do
+			result = scan_forward(lines[li])
+			if result ~= nil then
+				return result
 			end
-			if ch:match("[%w]") then
-				return false
-			elseif is_jieba_char(ch) then
-				return true
-			end
-			i = i + 1
 		end
 	elseif key == "b" or key == "ge" then
 		local lines = vim.api.nvim_buf_get_lines(0, 0, row, false)
@@ -182,34 +198,28 @@ function M.jieba_motion_necessary(key)
 			return false
 		end
 		local before = vim.fn.strcharpart(lines[#lines], 0, col - 1)
-		local prev_word
-		if key == "ge" then
-			prev_word = before:match("(%S+)$")
-		end
+		-- Fast path: check the previous non-space word on the current line
+		local prev_word = key == "ge" and before:match("(%S+)$") or nil
 		if prev_word then
-			for ch in string.gmatch(prev_word, "[%z\1-\127\194-\244][\128-\191]*") do
+			for ch in string.gmatch(prev_word, p) do
 				if is_jieba_char(ch) then
 					return true
 				end
 			end
 		end
-		if #lines > 1 then
-			before = table.concat(vim.list_slice(lines, 1, #lines - 1), "\n") .. "\n" .. before
+		-- Scan chars before prev_word on current line (backwards)
+		local prefix = prev_word and before:sub(1, #before - #prev_word) or before
+		local chars = M.split_char(prefix)
+		local result = scan_backward_chars(chars, #chars)
+		if result ~= nil then
+			return result
 		end
-		local i = vim.fn.strcharlen(before) - 1
-		if prev_word then
-			i = i - vim.fn.strcharlen(prev_word)
-		end
-		while i > 0 do
-			i = i - 1
-			local ch = vim.fn.strcharpart(before, i, 1)
-			if ch == "" then
-				break
-			end
-			if ch:match("[%w]") then
-				return false
-			elseif is_jieba_char(ch) then
-				return true
+		-- Continue scanning preceding lines lazily (backwards)
+		for li = #lines - 1, 1, -1 do
+			chars = M.split_char(lines[li])
+			result = scan_backward_chars(chars, #chars)
+			if result ~= nil then
+				return result
 			end
 		end
 	end
