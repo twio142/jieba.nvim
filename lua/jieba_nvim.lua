@@ -474,33 +474,78 @@ M.wordmotion_B = function()
 	vim.api.nvim_win_set_cursor(0, pos)
 end
 
+-- Returns the byte column just past the end of a ZWJ sequence starting at col.
+-- col must point to a ZWJ byte. If col is not ZWJ, returns col unchanged.
+local function end_of_zwj_seq(line, col)
+	while line:sub(col + 1, col + 3) == "\u{200D}" do
+		col = col + 3 -- skip ZWJ (3 bytes)
+		local b = line:byte(col + 1)
+		if not b then
+			break
+		end
+		if b < 0x80 then
+			col = col + 1
+		elseif b < 0xE0 then
+			col = col + 2
+		elseif b < 0xF0 then
+			col = col + 3
+		else
+			col = col + 4
+		end
+	end
+	return col
+end
+
 M.wordmotion_w = function()
 	local cursor_pos = vim.api.nvim_win_get_cursor(0)
 	local pos = navigate(index_next_start_of_word, index_first_start_of_word, false, Lines, cursor_pos)
-	-- if the next word is a ZWJ, skip it
-	local s = Lines[pos[1]]:sub(pos[2] + 1, pos[2] + 3)
-	if s == "\u{200D}" then
-		vim.cmd("normal! w")
-	else
-		vim.api.nvim_win_set_cursor(0, pos)
+	if Lines[pos[1]]:sub(pos[2] + 1, pos[2] + 3) == "\u{200D}" then
+		local after_seq = end_of_zwj_seq(Lines[pos[1]], pos[2])
+		pos = navigate(index_next_start_of_word, index_first_start_of_word, false, Lines, { pos[1], after_seq })
 	end
+	vim.api.nvim_win_set_cursor(0, pos)
 end
 
 M.wordmotion_W = function()
 	local cursor_pos = vim.api.nvim_win_get_cursor(0)
 	local pos = navigate(index_next_start_of_WORD, index_first_start_of_WORD, false, Lines, cursor_pos)
+	if pos[2] >= 3 and Lines[pos[1]]:sub(pos[2] - 2, pos[2]) == "\u{200D}" then
+		local after_seq = end_of_zwj_seq(Lines[pos[1]], pos[2] - 3)
+		pos = navigate(index_next_start_of_WORD, index_first_start_of_WORD, false, Lines, { pos[1], after_seq })
+	end
 	vim.api.nvim_win_set_cursor(0, pos)
 end
 
 M.wordmotion_e = function()
 	local cursor_pos = vim.api.nvim_win_get_cursor(0)
 	local pos = navigate(index_next_end_of_word, index_first_end_of_word, false, Lines, cursor_pos)
+	if Lines[pos[1]]:sub(pos[2] + 1, pos[2] + 3) == "\u{200D}" then
+		local after_seq = end_of_zwj_seq(Lines[pos[1]], pos[2])
+		pos = navigate(index_next_end_of_word, index_first_end_of_word, false, Lines, { pos[1], after_seq })
+	end
 	vim.api.nvim_win_set_cursor(0, pos)
 end
 
 M.wordmotion_E = function()
 	local cursor_pos = vim.api.nvim_win_get_cursor(0)
 	local pos = navigate(index_next_end_of_WORD, index_first_end_of_WORD, false, Lines, cursor_pos)
+	local line = Lines[pos[1]]
+	if line:sub(pos[2] + 1, pos[2] + 3) == "\u{200D}" then
+		-- Find the start of the codepoint immediately before the ZWJ
+		-- (the base character of the grapheme cluster, where nvim snaps the cursor).
+		local base = pos[2] - 1
+		while base > 0 and line:byte(base + 1) >= 0x80 and line:byte(base + 1) <= 0xBF do
+			base = base - 1
+		end
+		if cursor_pos[1] == pos[1] and cursor_pos[2] == base then
+			-- Already on the base of this cluster; skip past the whole sequence.
+			local after_seq = end_of_zwj_seq(line, pos[2])
+			pos = navigate(index_next_end_of_WORD, index_first_end_of_WORD, false, Lines, { pos[1], after_seq })
+		else
+			-- Approaching from before the emoji; land on the base (nvim snaps here).
+			pos[2] = end_of_zwj_seq(line, pos[2])
+		end
+	end
 	vim.api.nvim_win_set_cursor(0, pos)
 end
 
